@@ -1,0 +1,759 @@
+<!doctype html>
+
+<meta charset=utf-8>
+
+<style>
+</style>
+
+<table>
+    <tr>
+        <td style='vertical-align: top;'>
+            <p align='left'>
+                <svg version="1.1" baseProfile="full"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="800" height="800" viewBox="0 0 800 800">
+                    <g id='cells'></g>
+                    <g id='vertices'></g>
+                </svg>
+            </p>
+        </td>
+        <td style='vertical-align: top;'>
+            <p align=left>
+                <b>
+                    Projective coordinates:
+                </b>
+            </p>
+            <p id='coords'>
+            </p>
+            <p align=left>
+                <b>
+                    Branches:
+                </b>
+            </p>
+            <p id='branches'>
+            </p>
+            <p align=left>
+                <b>
+                    Switches:
+                </b>
+            </p>
+            <p id='switches'>
+            </p>
+            <p align=left>
+                <b>
+                    Transition matrix:
+                </b>
+            </p>
+            <p id='transmat'>
+            </p>
+        </td>
+    </tr>
+</table>
+
+<script>
+    function arrayEquals(a, b) {
+        return (a.length == b.length) &&
+            a.every((element, index) => element === b[index]);
+    }
+
+    // function vecArrayToString(arr) {
+    //     return arr.map((vector, index) => {
+    //         return (index == arr.length - 1) ? vector.toString() :
+    //                                         vector.toString() + ' ';
+    //     }).reduce((a, b) => a + b);
+    // }
+
+
+    function add(vec1, vec2) {
+        let indices = Array.from(Array(vec1.length).keys());
+        return indices.map(i => vec1[i] + vec2[i]);
+    }
+
+    function scale(vec, scalar) {
+        let indices = Array.from(Array(vec.length).keys());
+        return indices.map(i => scalar * vec[i]);
+    }
+
+    function projEquals(vec1, vec2) {
+        let mult;
+        let multSet = false;
+
+        for (let i = 0; i < vec1.length; i++) {
+            if (vec1[i] == 0) {
+                if (vec2[i] != 0) {
+                    return false;
+                }
+            } else if (!multSet) {
+                mult = vec2[i] / vec1[i];
+                multSet = true;
+            } else if (vec2[i] / vec1[i] != mult) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function projIntersection(eq1, eq2) {
+        let a = eq1[0];
+        let b = eq1[1];
+        let c = eq1[2];
+
+        let d = eq2[0];
+        let e = eq2[1];
+        let f = eq2[2];
+
+        if (a != 0) {
+            if (a*e - b*d != 0) {
+                let x = -a*c*e + c*b*d + a*b*f - b*c*d;
+                let y = -(a**2)*f + a*c*d;
+                let z = a**2*e - a*b*d;
+
+                if ((x<=0) && (y<=0) && (z<=0)) {
+                    return [-x,-y,-z];
+                }
+                else {
+                    return [x,y,z];
+                }
+            } else {
+                if ((b>=0) && (a<=0)) {
+                    return [b,-a,0];
+                } else {
+                return [-b,a,0];
+            }
+        }
+        } else if (d != 0) {
+            return projIntersection(eq2, eq1);
+        } else {
+            return [1,0,0];
+        }
+    }
+
+    function dotProd(vec1, vec2) {
+        output = 0;
+        vec1.forEach((x, i) => output += x*vec2[i]);
+        return output;
+    }
+
+    class Branch {
+        constructor(name, weight, counts, trainPath=null) {
+            this.name = name;
+            this.weight = weight;
+            if (trainPath) {
+                this.trainPath = trainPath;
+                this.trainPathString = trainPath.map(branch => branch.name).join(' ');
+            } else {
+                this.trainPath = [this];
+                this.trainPathString = this.name;
+            }
+            this.counts = counts;
+        }
+
+        pathString() {
+            return this.path.map(branch => branch.name).
+                reduce((a,b) => a + b);
+        }
+    }
+
+    class Switch {
+        constructor(name, inBranches, outBranches) {
+            this.name = name;
+            this.inBranches = inBranches;
+            this.outBranches = outBranches;
+        }
+    }
+
+    class Track {
+        constructor(switches, branches) {
+            this.switches = switches;
+            this.branches = branches;
+            this.map = new Object();
+            this.switchMap = new Object();
+            branches.forEach(branch => { this.map[branch.name] = branch; });
+            switches.forEach(u => { this.switchMap[u.name] = u; });
+
+            this.trainPathStrings = {};
+            this.branches.forEach(branch => { this.trainPathStrings[branch.name] = branch.trainPathString; });
+            this.names = Object.keys(this.map);
+            this.names.sort();
+            this.switchNames = Object.keys(this.switchMap);
+            this.switchNames.sort();
+
+            let numNames = this.names.length;
+            this.transMatrix = [];
+            for (let i=0; i<numNames; i++) {
+                this.transMatrix.push([]);
+                for (let j=0; j<numNames; j++) {
+                    let theBranch = this.map[this.names[j]];
+                    this.transMatrix[i].push(theBranch.counts[this.names[i]]);
+                }
+            }
+        }
+
+        getSwitches(branch) {
+            return this.switches.filter(s => {
+                return s.inBranches.includes(branch) ||
+                s.outBranches.includes(branch)
+            });
+        }
+
+        isLarge(branch) {
+            let switches = this.getSwitches(branch);
+            return (switches.length == 2 &&
+                (arrayEquals(switches[0].inBranches, [branch]) ||
+                    (arrayEquals(switches[0].outBranches, [branch]))) &&
+                (arrayEquals(switches[1].inBranches, [branch]) ||
+                    (arrayEquals(switches[1].outBranches, [branch]))));
+        }
+
+        getLargeBranches() {
+            return this.branches.filter(branch => this.isLarge(branch));
+        }
+
+        leftSplit(B) {
+            if (this.isLarge(B)) {
+                let u, v, C, D, E, F, B1, C1, D1, E1, F1;
+                let switches = this.getSwitches(B);
+
+                if (arrayEquals(switches[0].outBranches, [B])) {
+                    u = switches[0];
+                    v = switches[1];
+                } else {
+                    u = switches[1];
+                    v = switches[0];
+                }
+
+                C = u.inBranches[0];
+                D = u.inBranches[1];
+                E = v.outBranches[0];
+                F = v.outBranches[1];
+
+                let newWeight = add(E.weight, scale(C.weight, -1));
+
+                B1 = new Branch(B.name, newWeight, B.counts, B.trainPath);
+
+                if (C == F) {
+                    let newCounts = {};
+                    this.names.forEach(name => {
+                        newCounts[name] = 2*B.counts[name] + C.counts[name];
+                    });
+                    C1 = new Branch(C.name, C.weight, newCounts,
+                        B.trainPath.concat(C.trainPath).concat(B.trainPath));
+                    F1 = C1;
+                } else {
+                    let newCCounts = {};
+                    this.names.forEach(name => {
+                        newCCounts[name] = B.counts[name] + C.counts[name];
+                    });
+                    let newFCounts = {};
+                    this.names.forEach(name => {
+                        newFCounts[name] = B.counts[name] + F.counts[name];
+                    });
+                    C1 = new Branch(C.name, C.weight, newCCounts, C.trainPath.concat(B.trainPath));
+                    F1 = new Branch(F.name, F.weight, newFCounts, B.trainPath.concat(F.trainPath));
+                }
+
+                if (D == E) {
+                    D1 = new Branch(D.name, D.weight, D.counts, D.trainPath);
+                    E1 = D1;
+                } else {
+                    if (D == F) {
+                        D1 = F1;
+                    } else {
+                        D1 = new Branch(D.name, D.weight, D.counts, D.trainPath);
+                    }
+
+                    if (E == C) {
+                        E1 = C1;
+                    } else {
+                        E1 = new Branch(E.name, E.weight, E.counts, E.trainPath);
+                    }
+                }
+
+                let oldtoNewBranches = new Map();
+
+                oldtoNewBranches.set(B, B1);
+                oldtoNewBranches.set(C, C1);
+                oldtoNewBranches.set(D, D1);
+                oldtoNewBranches.set(E, E1);
+                oldtoNewBranches.set(F, F1);
+
+                for (let branch of this.branches) {
+                    if (![B, C, D, E, F].includes(branch)) {
+                        oldtoNewBranches.set(branch, new Branch(branch.name, branch.weight, branch.counts,
+                            branch.trainPath));
+                    }
+                }
+
+                let newBranches = Array.from(oldtoNewBranches.values());
+
+                let u1 = new Switch(u.name, [D1], [B1, F1]);
+                let v1 = new Switch(v.name, [C1, B1], [E1]);
+
+                let newSwitches = this.switches.map(s => {
+                    if (s == u) {
+                        return u1;
+                    } else if (s == v) {
+                        return v1;
+                    } else {
+                        return new Switch(s.name, s.inBranches.map(branch => oldtoNewBranches.get(branch)),
+                            s.outBranches.map(branch => oldtoNewBranches.get(branch)));
+                    }
+                });
+
+                return [new Track(newSwitches, newBranches), newWeight];
+            } else { return [this, null] };
+        }
+
+        rightSplit(B) {
+            if (this.isLarge(B)) {
+                let u, v, C, D, E, F, B1, C1, D1, E1, F1;
+                let switches = this.getSwitches(B);
+                if (arrayEquals(switches[0].outBranches, [B])) {
+                    u = switches[0];
+                    v = switches[1];
+                } else {
+                    u = switches[1];
+                    v = switches[0];
+                }
+
+                C = u.inBranches[0];
+                D = u.inBranches[1];
+                E = v.outBranches[0];
+                F = v.outBranches[1];
+
+                let newWeight = add(F.weight, scale(D.weight,-1));
+
+                B1 = new Branch(B.name, newWeight, B.counts, B.trainPath);
+                if (E == D) {
+                    let newCounts = {};
+                    this.names.forEach(name => {
+                        newCounts[name] = 2*B.counts[name] + E.counts[name];
+                    });
+                    D1 = new Branch(D.name, D.weight, newCounts,
+                        B.trainPath.concat(E.trainPath).concat(B.trainPath));
+                    E1 = D1;
+                } else {
+                    let newDCounts = {};
+                    this.names.forEach(name => {
+                        newDCounts[name] = B.counts[name] + D.counts[name];
+                    });
+                    let newECounts = {};
+                    this.names.forEach(name => {
+                        newECounts[name] = B.counts[name] + E.counts[name];
+                    });
+                    D1 = new Branch(D.name, D.weight, newDCounts, D.trainPath.concat(B.trainPath));
+                    E1 = new Branch(E.name, E.weight, newECounts, B.trainPath.concat(E.trainPath));
+                }
+
+                if (C == F) {
+                    C1 = new Branch(C.name, C.weight, C.counts, C.trainPath);
+                    F1 = C1;
+                } else {
+                    if (C == E) {
+                        C1 = E1;
+                    } else {
+                        C1 = new Branch(C.name, C.weight, C.counts, C.trainPath);
+                    }
+
+                    if (F == D) {
+                        F1 = D1;
+                    } else {
+                        F1 = new Branch(F.name, F.weight, F.counts, F.trainPath);
+                    }
+                }
+
+                let oldtoNewBranches = new Map();
+
+                oldtoNewBranches.set(B, B1);
+                oldtoNewBranches.set(C, C1);
+                oldtoNewBranches.set(D, D1);
+                oldtoNewBranches.set(E, E1);
+                oldtoNewBranches.set(F, F1);
+
+                for (let branch of this.branches) {
+                    if (![B, C, D, E, F].includes(branch)) {
+                        oldtoNewBranches.set(branch, new Branch(branch.name, branch.weight, branch.counts,
+                            branch.trainPath));
+                    }
+                }
+
+                let newBranches = Array.from(oldtoNewBranches.values());
+
+                let u1 = new Switch(u.name, [C1], [E1, B1]);
+                let v1 = new Switch(v.name, [B1, D1], [F1]);
+
+                let newSwitches = this.switches.map(s => {
+                    if (s == u) {
+                        return u1;
+                    } else if (s == v) {
+                        return v1;
+                    } else {
+                        return new Switch(s.name, s.inBranches.map(branch => oldtoNewBranches.get(branch)),
+                            s.outBranches.map(branch => oldtoNewBranches.get(branch)));
+                    }
+                });
+
+                return [new Track(newSwitches, newBranches), newWeight];
+            } else { return [this, null] };
+        }
+    }
+
+    // class Vector {
+    //     constructor(...coords) {
+    //         this.coords = coords;
+    //         this.dim = coords.length;
+    //     }
+    // }
+
+    class Side {
+        constructor(point1, point2, ineq, sign) {
+            this.point1 = point1;
+            this.point2 = point2;
+            this.points = [point1, point2];
+            this.ineq = ineq;
+            this.sign = sign;
+        }
+
+        contains(point) {
+            if (this.sign == '>') {
+                return dotProd(this.ineq, point) >= 0;
+            } else {
+                return dotProd(this.ineq, point) <= 0;
+            }
+        }
+
+        includes(point) {
+            return this.points.some(other => projEquals(other, point));
+        }
+
+        print() {
+            console.log(this.point1);
+            console.log(this.point2);
+        }
+    }
+
+    class Cell {
+        constructor(vertLayer, cellLayer, v1, v2, v3, radius, thickness, sideColor, sideOpacity, fillColor, track, ...sides) {
+            this.track = track;
+            this.sides = sides;
+
+            this.points = [];
+
+            let i = 0;
+            let point = sides[i].point1;
+
+            for (let k=0; k<sides.length; k++) {
+                this.points.push(point);
+                for (let j=0; j<sides.length; j++) {
+                    if (j != i) {
+                        if (projEquals(sides[j].point1, point)) {
+                            i = j;
+                            point = sides[j].point2;
+                            break;
+                        } else if (projEquals(sides[j].point2, point)) {
+                            i = j;
+                            point = sides[j].point1;
+                            break
+                        }
+                    }
+                }
+            }
+
+            this.drawing = null;
+            this.vertLayer = vertLayer;
+            this.cellLayer = cellLayer;
+            this.v1 = v1;
+            this.v2 = v2;
+            this.v3 = v3;
+            this.radius = radius;
+            this.thickness = thickness;
+            this.sideColor = sideColor;
+            this.sideOpacity = sideOpacity;
+            this.fillColor = fillColor;
+        }
+
+        contains(point) {
+            return this.sides.every(side => side.contains(point));
+        }
+
+        split(B) {
+            let [leftTrack, newIneq] = this.track.leftSplit(B);
+            let rightTrack = this.track.rightSplit(B)[0];
+
+            let intPoints = [];
+
+            for (let side of this.sides) {
+                let intPoint = projIntersection(newIneq, side.ineq);
+                if (this.contains(intPoint)) {
+                    let contained = false;
+                    for (let point of intPoints) {
+                        if (projEquals(point, intPoint)) {
+                            contained = true;
+                            break;
+                        }
+                    }
+                    if (!contained) {
+                        intPoints.push(intPoint);
+                    }
+                }
+            }
+
+            let [newPoint1, newPoint2] = intPoints;
+            let leftSplitNewSide = new Side(newPoint1, newPoint2, newIneq, '>');
+            let rightSplitNewSide = new Side(newPoint1, newPoint2, newIneq, '<');
+
+            let newLeftSides = [leftSplitNewSide];
+            let newRightSides = [rightSplitNewSide];
+            let leftSideNull = false;
+            let rightSideNull = false;
+
+            for (let side of this.sides) {
+                let point1 = side.point1;
+                let point2 = side.point2;
+                if ((projEquals(point1, newPoint1) && projEquals(point2, newPoint2)) ||
+                    (projEquals(point1, newPoint2) && projEquals(point2, newPoint1))) {
+                    for (let side of this.sides) {
+                        if (!leftSplitNewSide.contains(side.point1) ||
+                            !leftSplitNewSide.contains(side.point2)) {
+                            leftSideNull = true;
+                            break;
+                        } else if (!rightSplitNewSide.contains(side.point1) ||
+                            !rightSplitNewSide.contains(side.point2)) {
+                            rightSideNull = true;
+                            break;
+                        }
+                    }
+                    break;
+                } else if (leftSplitNewSide.contains(point1) &&
+                    leftSplitNewSide.contains(point2)) {
+                    newLeftSides.push(side);
+                } else if (rightSplitNewSide.contains(point1) &&
+                    rightSplitNewSide.contains(point2)) {
+                    newRightSides.push(side);
+                } else {
+                    if (leftSplitNewSide.contains(point1) &&
+                        rightSplitNewSide.contains(point2)) {
+                        let testSign = side.sign == '<' ? '>' : '<';
+                        let testSide = new Side(point1, point2, side.ineq, testSign);
+                        if (testSide.contains(newPoint1)) {
+                            if (!projEquals(point1, newPoint1)) {
+                                newLeftSides.push(new Side(point1, newPoint1,
+                                    side.ineq, side.sign));
+                            }
+                            if (!projEquals(point2, newPoint1)) {
+                                newRightSides.push(new Side(point2, newPoint1,
+                                    side.ineq, side.sign));
+                            }
+                        } else {
+                            if (!projEquals(point1, newPoint2)) {
+                                newLeftSides.push(new Side(point1, newPoint2,
+                                    side.ineq, side.sign));
+                            }
+                            if (!projEquals(point2, newPoint2)) {
+                                newRightSides.push(new Side(point2, newPoint2,
+                                    side.ineq, side.sign));
+                            }
+                        }
+                    } else {
+                        let testSign = side.sign == '<' ? '>' : '<';
+                        let testSide = new Side(point1, point2, side.ineq, testSign);
+                        if (testSide.contains(newPoint1)) {
+                            if (!projEquals(point2, newPoint1)) {
+                                newLeftSides.push(new Side(point2, newPoint1,
+                                    side.ineq, side.sign));
+                            }
+                            if (!projEquals(point1, newPoint1)) {
+                                newRightSides.push(new Side(point1, newPoint1,
+                                    side.ineq, side.sign));
+                            }
+                        } else {
+                            if (!projEquals(point2, newPoint2)) {
+                                newLeftSides.push(new Side(point2, newPoint2,
+                                    side.ineq, side.sign));
+                            }
+                            if (!projEquals(point1, newPoint2)) {
+                                newRightSides.push(new Side(point1, newPoint2,
+                                    side.ineq, side.sign));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let newOpacity = this.sideOpacity;
+            let newRadius = this.radius / 1.1;
+            let newThickness = this.thickness / 1.1;
+
+            if (leftSideNull) {
+                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
+                    this.sideColor, newOpacity, this.fillColor, rightTrack, ...this.sides)];
+            } else if (rightSideNull) {
+                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
+                    this.sideColor, newOpacity, this.fillColor, leftTrack, ...this.sides)];
+            } else {
+                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
+                        this.sideColor, newOpacity, this.fillColor, leftTrack, ...newLeftSides),
+                    new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
+                        this.sideColor, newOpacity, this.fillColor, rightTrack, ...newRightSides)];
+            }
+        }
+
+        shatter() {
+            let names = this.track.getLargeBranches().map(branch => branch.name);
+            let cells = [this];
+            for (let name of names) {
+                let newCells = [];
+                cells.forEach(cell => {
+                    newCells =
+                    newCells.concat(cell.split(cell.track.map[name])); }
+                );
+                cells = newCells;
+            }
+
+            return cells;
+        }
+
+        draw() {
+            let vertices = this.points.map(point => vectorToPoint(point, this.v1, this.v2, this.v3));
+
+            vertices.forEach(vertex => {
+                let circ = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circ.setAttribute('cx', vertex[0]);
+                circ.setAttribute('cy', vertex[1]);
+                circ.setAttribute('fill', this.sideColor);
+                circ.setAttribute('r', this.radius);
+                this.vertLayer.appendChild(circ);
+            })
+
+            let vertStrings = vertices.map(vert => `${vert[0]},${vert[1]}`);
+            let vertString = vertStrings.join(' ');
+            let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute('points', vertString);
+            polygon.setAttribute('fill', this.fillColor);
+            polygon.setAttribute('stroke', this.sideColor);
+            polygon.setAttribute('stroke-width', this.thickness);
+            polygon.setAttribute('stroke-opacity', this.sideOpacity);
+
+            this.cellLayer.appendChild(polygon);
+            this.drawing = polygon;
+
+            polygon.addEventListener('click', () => this.onClick());
+            polygon.addEventListener('mouseover', () => this.onMouseOver());
+        }
+
+        onClick() {
+            let newCells = this.shatter();
+            newCells.forEach(cell => cell.draw());
+
+            this.drawing.removeEventListener('click', this.onClick);
+        }
+
+        onMouseOver() {
+            let coordsString = '';
+            this.points.forEach(vector => {
+                coordsString += `(${vector[0]},${vector[1]},${vector[2]})\n`;
+            });
+            const coordsNode = document.getElementById('coords');
+            coordsNode.removeChild(coordsNode.lastChild);
+            coordsNode.appendChild(document.createTextNode(coordsString));
+
+            const branchesNode = document.getElementById('branches');
+            branchesNode.removeChild(branchesNode.lastChild);
+            let branchPars = document.createElement('p');
+            branchesNode.appendChild(branchPars);
+            this.track.names.forEach(name => {
+                let par = document.createElement('p');
+                par.appendChild(document.createTextNode(name + ' : ' + this.track.trainPathStrings[name]));
+                branchPars.appendChild(par);
+            });
+
+
+            const switchesNode = document.getElementById('switches');
+            switchesNode.removeChild(switchesNode.lastChild);
+            let switchPars = document.createElement('p');
+            switchesNode.appendChild(switchPars);
+            this.track.switchNames.forEach(name => {
+                let par = document.createElement('p');
+                let switchesString = name + ': Left: ';
+                this.track.switchMap[name].inBranches.forEach(branch => { switchesString += branch.name + ' '; });
+                switchesString += ' | Right: ';
+                this.track.switchMap[name].outBranches.forEach(branch => { switchesString += branch.name + ' '; });
+                par.appendChild(document.createTextNode(switchesString));
+                switchPars.appendChild(par);
+            });
+
+            let matrixTable = document.createElement('table');
+            this.track.transMatrix.forEach(row => {
+                let rowElt = document.createElement('tr');
+                row.forEach(entry => {
+                    let entryElt = document.createElement('td');
+                    entryElt.appendChild(document.createTextNode(entry));
+                    rowElt.appendChild(entryElt);
+                });
+                matrixTable.appendChild(rowElt);
+            });
+
+            const matrixNode = document.getElementById('transmat');
+            matrixNode.removeChild(matrixNode.lastChild);
+            matrixNode.appendChild(matrixTable);
+        }
+    }
+
+    function projectivize(vector) {
+        let sum = vector.reduce((sum, val) => sum + val);
+        return vector.map(entry => entry/sum);
+    }
+
+    function vectorToPoint(vector, ...vertices) {
+        let [v1,v2,v3] = vertices;
+        let [a,b,c] = projectivize(vector);
+
+        return newVec = add(add(scale(v1,a),scale(v2,b)),scale(v3,c));
+    }
+</script>
+
+
+<script>
+    const unit = 100;
+    const sideThickness = '1';
+    var vertRadius = 5;
+    const vertColor = 'black';
+    const sideColor = 'black';
+    const fillColor = 'white';
+    var sideOpacity = 1;
+
+    const sideLength = 800;
+    const v2 = [sideLength, Math.sqrt(3)*sideLength/2];
+    const v3 = [0, Math.sqrt(3)*sideLength/2];
+    const v1 = [sideLength/2, 0];
+</script>
+
+<script>
+    let A = new Branch('A', [1,0,0], {'A':1, 'B':0, 'C':0, 'D':0, 'E':0, 'F':0});
+    let B = new Branch('B', [0,1,0], {'A':0, 'B':1, 'C':0, 'D':0, 'E':0, 'F':0});
+    let C = new Branch('C', [0,0,1], {'A':0, 'B':0, 'C':1, 'D':0, 'E':0, 'F':0});
+    let D = new Branch('D', [1,0,0], {'A':0, 'B':0, 'C':0, 'D':1, 'E':0, 'F':0});
+    let E = new Branch('E', [1,1,0], {'A':0, 'B':0, 'C':0, 'D':0, 'E':1, 'F':0});
+    let F = new Branch('F', [1,0,1], {'A':0, 'B':0, 'C':0, 'D':0, 'E':0, 'F':1});
+    let branches = [A, B, C, D, E, F];
+
+    let u = new Switch('u', [B, D], [E]);
+    let v = new Switch('v', [E], [A, B]);
+    let x = new Switch('x', [A, C], [F]);
+    let y = new Switch('y', [F], [C, D]);
+    let switches = [u, v, x, y];
+
+    let track = new Track(switches, branches);
+
+    let aSide = new Side([0,1,0], [0,0,1], [1,0,0], '>');
+    let bSide = new Side([1,0,0], [0,0,1], [0,1,0], '>');
+    let cSide = new Side([1,0,0], [0,1,0], [0,0,1], '>');
+
+    let vertLayer = document.getElementById('vertices');
+    let cellLayer = document.getElementById('cells');
+    let cell = new Cell(vertLayer, cellLayer, v1, v2, v3, vertRadius, sideThickness, sideColor, sideOpacity, fillColor,
+        track, aSide, bSide, cSide);
+    cell.draw();
+</script>
+
+
