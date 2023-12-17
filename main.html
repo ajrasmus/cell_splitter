@@ -56,14 +56,6 @@
             a.every((element, index) => element === b[index]);
     }
 
-    // function vecArrayToString(arr) {
-    //     return arr.map((vector, index) => {
-    //         return (index == arr.length - 1) ? vector.toString() :
-    //                                         vector.toString() + ' ';
-    //     }).reduce((a, b) => a + b);
-    // }
-
-
     function add(vec1, vec2) {
         let indices = Array.from(Array(vec1.length).keys());
         return indices.map(i => vec1[i] + vec2[i]);
@@ -397,13 +389,6 @@
             } else { return [this, null] };
         }
     }
-
-    // class Vector {
-    //     constructor(...coords) {
-    //         this.coords = coords;
-    //         this.dim = coords.length;
-    //     }
-    // }
 
     class Side {
         constructor(point1, point2, ineq, sign) {
