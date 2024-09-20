@@ -56,26 +56,42 @@
             a.every((element, index) => element === b[index]);
     }
 
-    function add(vec1, vec2) {
-        let indices = Array.from(Array(vec1.length).keys());
-        return indices.map(i => vec1[i] + vec2[i]);
-    }
+    /**
+     * Add two vectors
+     * vec1, vec2: vectors of the same dimension represented as arrays
+     */
+    let add = (vec1, vec2) => vec1.map((x,i) => x + vec2[i]);
 
-    function scale(vec, scalar) {
-        let indices = Array.from(Array(vec.length).keys());
-        return indices.map(i => scalar * vec[i]);
-    }
+    /**
+     * Scale a vector vec by a constant scalar.
+     */
+    let scale = (vec, scalar) => vec.map(x => scalar * x);
 
+    /**
+     * Perform integer division on a vector.
+     */
+    let intDiv = (vec, scalar) => vec.map(x => Math.floor(x / scalar));
+
+    /**
+     * Check if two non-zero vectors are equal in projective space.
+     * I.e. check if there exists a constant c!=0 with cvec1=vec2.
+     */
     function projEquals(vec1, vec2) {
+        // mult is the current best guess of a constant c with cvec1=vec2
         let mult;
+
+        // multSet says whether mult has been defined yet
         let multSet = false;
 
         for (let i = 0; i < vec1.length; i++) {
+            // If one vector has a zero where the other
+            // doesn't then the vectors are not equivalent.
             if (vec1[i] == 0) {
                 if (vec2[i] != 0) {
                     return false;
                 }
-            } else if (!multSet) {
+            } // Set mult if it hasn't been set yet.
+            else if (!multSet) {
                 mult = vec2[i] / vec1[i];
                 multSet = true;
             } else if (vec2[i] / vec1[i] != mult) {
@@ -85,15 +101,56 @@
         return true;
     }
 
+    /**
+     * Compute the greatest common denominator of integers a, b.
+     */
+    function gcd(a,b) {
+        a = Math.abs(a);
+        b = Math.abs(b);
+        if (b > a) {var temp = a; a = b; b = temp;}
+        while (true) {
+            if (b == 0) return a;
+            a %= b;
+            if (a == 0) return b;
+            b %= a;
+        }
+    }
+
+    /**
+     * Compute the greatest common denominator of integers a, b, c.
+     */
+    let gcd3 = (a,b,c) => gcd(gcd(a,b),c);
+
+    /**
+     * Divide vector by its sum. Used to draw a vector inside of a simplex.
+     */
+    function projectivize(vector) {
+        let sum = vector.reduce((sum, val) => sum + val);
+        return vector.map(entry => entry/sum);
+    }
+
+    /**
+     * Compute vector as a linear combination of vertices.
+     * vector: a non-negative 3-dimensional vector represented as [x,y,z]
+     * vertices: three points spanning a triangle in the plane, represented as [x,y]
+     */
+    function vectorToPoint(vector, ...vertices) {
+        let [v1,v2,v3] = vertices;
+        let [a,b,c] = projectivize(vector);
+
+        return newVec = add(add(scale(v1,a),scale(v2,b)),scale(v3,c));
+    }
+
+    /**
+     * Return the intersection in projective space of two planes
+     * defined by linear equations ax+by+cz=0 and dx+ey+fz=0, assumed
+     * to intersect in a line.
+     */
     function projIntersection(eq1, eq2) {
-        let a = eq1[0];
-        let b = eq1[1];
-        let c = eq1[2];
+        let [a,b,c] = eq1;
+        let [d,e,f] = eq2;
 
-        let d = eq2[0];
-        let e = eq2[1];
-        let f = eq2[2];
-
+        // Row reduction in case a!=0.
         if (a != 0) {
             if (a*e - b*d != 0) {
                 let x = -a*c*e + c*b*d + a*b*f - b*c*d;
@@ -115,38 +172,63 @@
         }
         } else if (d != 0) {
             return projIntersection(eq2, eq1);
-        } else {
+        } // If a=d=0 then planes intersect in the line y=z=0.
+        else {
             return [1,0,0];
         }
     }
 
-    function dotProd(vec1, vec2) {
-        output = 0;
-        vec1.forEach((x, i) => output += x*vec2[i]);
-        return output;
-    }
+    /**
+     * Return the dot product of two vectors of the same dimension.
+     */
+    let dotProd = (vec1, vec2) => vec1.map((x,i) => x*vec2[i]).reduce((x,y) => x+y);
 
+    /**
+     * A class representing an oriented branch in a train track together with
+     * information about a carrying map to an earlier train track.
+     */
     class Branch {
+        /**
+         * name: a name for the branch, preserved under splitting
+         * weight: an array of floats, defining the weight of this branch
+         * as a linear combination of other weights in the same train track.
+         * counts: a dictionary with keys representing the branches on the
+         * earlier train track and values representing the number of times
+         * this branch traverses each branch on the earlier track.
+         * trainPath: a train path representing the image of the branch on
+         * the earlier track.
+         */
         constructor(name, weight, counts, trainPath=null) {
             this.name = name;
             this.weight = weight;
             if (trainPath) {
                 this.trainPath = trainPath;
+
+                // Create a string representing the train path
                 this.trainPathString = trainPath.map(branch => branch.name).join(' ');
             } else {
                 this.trainPath = [this];
+
+                // Create a string representing the train path
                 this.trainPathString = this.name;
             }
             this.counts = counts;
         }
-
-        pathString() {
-            return this.path.map(branch => branch.name).
-                reduce((a,b) => a + b);
-        }
     }
 
+    /**
+     * A class representing a switch in a train track with a specified "left"
+     * (incoming) side and "right" (outgoing) side and orientations on the
+     * set of incoming branches and outgoing branches from "top" to "bottom."
+     */
     class Switch {
+        /**
+         * name: a string naming the switch
+         * inBranches: a list of branches representing the branches on the left
+         * side of the switch
+         * outBranches: a list of branches representing the branches on the right
+         * side of the switch
+         */
         constructor(name, inBranches, outBranches) {
             this.name = name;
             this.inBranches = inBranches;
@@ -154,22 +236,40 @@
         }
     }
 
+    /**
+     * A class representing an oriented train track. All large branches are assumed
+     * to leave a switch on the right and enter another switch on the left.
+     */
     class Track {
+        /**
+         * switches: a list of the switches in the track
+         * branches: a list of the branches in the track
+         */
         constructor(switches, branches) {
             this.switches = switches;
             this.branches = branches;
+
+            // map and switchMap are dictionaries pointing from names
+            // of branches and switches to the branches and switches themselves
             this.map = new Object();
             this.switchMap = new Object();
             branches.forEach(branch => { this.map[branch.name] = branch; });
             switches.forEach(u => { this.switchMap[u.name] = u; });
 
+            // A dictionary storing the trainPathString for each branch
             this.trainPathStrings = {};
-            this.branches.forEach(branch => { this.trainPathStrings[branch.name] = branch.trainPathString; });
+            this.branches.forEach(branch =>
+                { this.trainPathStrings[branch.name] = branch.trainPathString; });
+
             this.names = Object.keys(this.map);
             this.names.sort();
             this.switchNames = Object.keys(this.switchMap);
             this.switchNames.sort();
 
+            // transMatrix stores the transition matrix from the branches
+            // of this train track to the branches of an earlier train track
+            // carrying it. The transition matrix can be obtained from
+            // the counts of each branch.
             let numNames = this.names.length;
             this.transMatrix = [];
             for (let i=0; i<numNames; i++) {
@@ -181,15 +281,24 @@
             }
         }
 
+        /**
+         * Returns the switches adjacent to the branch branch.
+         */
         getSwitches(branch) {
             return this.switches.filter(s => {
                 return s.inBranches.includes(branch) ||
-                s.outBranches.includes(branch)
+                s.outBranches.includes(branch);
             });
         }
 
+        /**
+         * Returns whether branch is a large branch or not.
+         */
         isLarge(branch) {
             let switches = this.getSwitches(branch);
+
+            // The branch is large if and only if it is the only
+            // in branch or the only out branch for each of its switches.
             return (switches.length == 2 &&
                 (arrayEquals(switches[0].inBranches, [branch]) ||
                     (arrayEquals(switches[0].outBranches, [branch]))) &&
@@ -197,32 +306,43 @@
                     (arrayEquals(switches[1].outBranches, [branch]))));
         }
 
+        /**
+         * Get the large branches of this train track.
+         */
         getLargeBranches() {
             return this.branches.filter(branch => this.isLarge(branch));
         }
 
+        /**
+         * Return a new train track obtained from this one by a left split
+         * on the branch B. Information on the carrying map from the new
+         * track to this one is stored in the branches of the new track.
+         * Additionally return the new weight of the split branch.
+         */
         leftSplit(B) {
             if (this.isLarge(B)) {
+                // New switch and branch variables will have a 1 appended to the name.
                 let u, v, C, D, E, F, B1, C1, D1, E1, F1;
                 let switches = this.getSwitches(B);
 
+                // In our track, B leaves u from the right and enters v on the left.
                 if (arrayEquals(switches[0].outBranches, [B])) {
-                    u = switches[0];
-                    v = switches[1];
+                    [u, v] = switches;
                 } else {
-                    u = switches[1];
-                    v = switches[0];
+                    [v, u] = switches;
                 }
 
-                C = u.inBranches[0];
-                D = u.inBranches[1];
-                E = v.outBranches[0];
-                F = v.outBranches[1];
+                // The (at most) four branches adjacent to B.
+                [C, D] = u.inBranches;
+                [E, F] = v.outBranches;
 
+                // Create the new branch corresponding to B after splitting.
                 let newWeight = add(E.weight, scale(C.weight, -1));
-
                 B1 = new Branch(B.name, newWeight, B.counts, B.trainPath);
 
+                // Create the new branches corresponding to C and F after splitting.
+                // To do this we need to compute new trainPaths and new counts
+                // for C and F using the old ones. This depends on whether C=F or not.
                 if (C == F) {
                     let newCounts = {};
                     this.names.forEach(name => {
@@ -240,10 +360,15 @@
                     this.names.forEach(name => {
                         newFCounts[name] = B.counts[name] + F.counts[name];
                     });
-                    C1 = new Branch(C.name, C.weight, newCCounts, C.trainPath.concat(B.trainPath));
-                    F1 = new Branch(F.name, F.weight, newFCounts, B.trainPath.concat(F.trainPath));
+                    C1 = new Branch(C.name, C.weight, newCCounts,
+                        C.trainPath.concat(B.trainPath));
+                    F1 = new Branch(F.name, F.weight, newFCounts,
+                        B.trainPath.concat(F.trainPath));
                 }
 
+                // Create the new branches corresponding to D and E after splitting.
+                // To do this we need to compute new trainPaths and new counts
+                // for D and E using the old ones. This depends on whether D=E or not.
                 if (D == E) {
                     D1 = new Branch(D.name, D.weight, D.counts, D.trainPath);
                     E1 = D1;
@@ -253,7 +378,6 @@
                     } else {
                         D1 = new Branch(D.name, D.weight, D.counts, D.trainPath);
                     }
-
                     if (E == C) {
                         E1 = C1;
                     } else {
@@ -262,60 +386,79 @@
                 }
 
                 let oldtoNewBranches = new Map();
-
                 oldtoNewBranches.set(B, B1);
                 oldtoNewBranches.set(C, C1);
                 oldtoNewBranches.set(D, D1);
                 oldtoNewBranches.set(E, E1);
                 oldtoNewBranches.set(F, F1);
 
+                // Other branches are unaffected by the split.
                 for (let branch of this.branches) {
                     if (![B, C, D, E, F].includes(branch)) {
-                        oldtoNewBranches.set(branch, new Branch(branch.name, branch.weight, branch.counts,
-                            branch.trainPath));
+                        oldtoNewBranches.set(branch,
+                            new Branch(branch.name, branch.weight,
+                                branch.counts, branch.trainPath));
                     }
                 }
 
                 let newBranches = Array.from(oldtoNewBranches.values());
 
+                // Create the new switches corresponding to u and v.
                 let u1 = new Switch(u.name, [D1], [B1, F1]);
                 let v1 = new Switch(v.name, [C1, B1], [E1]);
 
+                // Create all the new switches.
                 let newSwitches = this.switches.map(s => {
                     if (s == u) {
                         return u1;
                     } else if (s == v) {
                         return v1;
                     } else {
-                        return new Switch(s.name, s.inBranches.map(branch => oldtoNewBranches.get(branch)),
-                            s.outBranches.map(branch => oldtoNewBranches.get(branch)));
+                        // Switches other than u and v are unaffected by the split.
+                        // they just need to point to the new branches corresponding
+                        // to the branches they pointed to previously.
+                        return new Switch(s.name, s.inBranches.map(branch =>
+                            oldtoNewBranches.get(branch)), s.outBranches.map(branch =>
+                            oldtoNewBranches.get(branch)));
                     }
                 });
 
                 return [new Track(newSwitches, newBranches), newWeight];
-            } else { return [this, null] };
+            }
+            // Do nothing if B is not large.
+            else { return [this, null] };
         }
 
+        /**
+         * Return a new train track obtained from this one by a right split
+         * on the branch B. Information on the carrying map from the new
+         * track to this one is stored in the branches of the new track.
+         * Additionally return the new weight of the split branch.
+         */
         rightSplit(B) {
             if (this.isLarge(B)) {
+                // New switch and branch variables will have a 1 appended to the name.
                 let u, v, C, D, E, F, B1, C1, D1, E1, F1;
                 let switches = this.getSwitches(B);
+
+                // In our track, B leaves u from the right and enters v on the left.
                 if (arrayEquals(switches[0].outBranches, [B])) {
-                    u = switches[0];
-                    v = switches[1];
+                    [u, v] = switches;
                 } else {
-                    u = switches[1];
-                    v = switches[0];
+                    [v, u] = switches;
                 }
 
-                C = u.inBranches[0];
-                D = u.inBranches[1];
-                E = v.outBranches[0];
-                F = v.outBranches[1];
+                // The (at most) four branches adjacent to B.
+                [C, D] = u.inBranches;
+                [E, F] = v.outBranches;
 
+                // Create the new branch corresponding to B after splitting.
                 let newWeight = add(F.weight, scale(D.weight,-1));
-
                 B1 = new Branch(B.name, newWeight, B.counts, B.trainPath);
+
+                // Create the new branches corresponding to E and D after splitting.
+                // To do this we need to compute new trainPaths and new counts
+                // for E and D using the old ones. This depends on whether E=D or not.
                 if (E == D) {
                     let newCounts = {};
                     this.names.forEach(name => {
@@ -333,10 +476,15 @@
                     this.names.forEach(name => {
                         newECounts[name] = B.counts[name] + E.counts[name];
                     });
-                    D1 = new Branch(D.name, D.weight, newDCounts, D.trainPath.concat(B.trainPath));
-                    E1 = new Branch(E.name, E.weight, newECounts, B.trainPath.concat(E.trainPath));
+                    D1 = new Branch(D.name, D.weight, newDCounts,
+                        D.trainPath.concat(B.trainPath));
+                    E1 = new Branch(E.name, E.weight, newECounts,
+                        B.trainPath.concat(E.trainPath));
                 }
 
+                // Create the new branches corresponding to C and F after splitting.
+                // To do this we need to compute new trainPaths and new counts
+                // for C and F using the old ones. This depends on whether C=F or not.
                 if (C == F) {
                     C1 = new Branch(C.name, C.weight, C.counts, C.trainPath);
                     F1 = C1;
@@ -346,7 +494,6 @@
                     } else {
                         C1 = new Branch(C.name, C.weight, C.counts, C.trainPath);
                     }
-
                     if (F == D) {
                         F1 = D1;
                     } else {
@@ -355,50 +502,69 @@
                 }
 
                 let oldtoNewBranches = new Map();
-
                 oldtoNewBranches.set(B, B1);
                 oldtoNewBranches.set(C, C1);
                 oldtoNewBranches.set(D, D1);
                 oldtoNewBranches.set(E, E1);
                 oldtoNewBranches.set(F, F1);
 
+                // Other branches are unaffected by the split.
                 for (let branch of this.branches) {
                     if (![B, C, D, E, F].includes(branch)) {
-                        oldtoNewBranches.set(branch, new Branch(branch.name, branch.weight, branch.counts,
-                            branch.trainPath));
+                        oldtoNewBranches.set(branch, new Branch(branch.name,
+                            branch.weight, branch.counts, branch.trainPath));
                     }
                 }
 
                 let newBranches = Array.from(oldtoNewBranches.values());
 
+                // Create the new switches corresponding to u and v.
                 let u1 = new Switch(u.name, [C1], [E1, B1]);
                 let v1 = new Switch(v.name, [B1, D1], [F1]);
 
+                // Create all the new switches.
                 let newSwitches = this.switches.map(s => {
                     if (s == u) {
                         return u1;
                     } else if (s == v) {
                         return v1;
                     } else {
-                        return new Switch(s.name, s.inBranches.map(branch => oldtoNewBranches.get(branch)),
-                            s.outBranches.map(branch => oldtoNewBranches.get(branch)));
+                        // Switches other than u and v are unaffected by the split.
+                        // they just need to point to the new branches corresponding
+                        // to the branches they pointed to previously.
+                        return new Switch(s.name, s.inBranches.map(branch =>
+                            oldtoNewBranches.get(branch)), s.outBranches.map(branch =>
+                            oldtoNewBranches.get(branch)));
                     }
                 });
 
                 return [new Track(newSwitches, newBranches), newWeight];
-            } else { return [this, null] };
+            }
+            // Do nothing if B is not large.
+            else { return [this, null] };
         }
     }
 
+    /**
+     * A class representing an oriented side of a polygon in the plane,
+     * together with a choice of one of the two half-spaces cut
+     * off by the line through the side.
+     */
     class Side {
         constructor(point1, point2, ineq, sign) {
             this.point1 = point1;
             this.point2 = point2;
             this.points = [point1, point2];
+
+            // Represents the half-space of points "contained" by the side
+            // in the sense of the method contains given below.
             this.ineq = ineq;
             this.sign = sign;
         }
 
+        /**
+         * Check whether the half-space contains point
+         */
         contains(point) {
             if (this.sign == '>') {
                 return dotProd(this.ineq, point) >= 0;
@@ -406,27 +572,54 @@
                 return dotProd(this.ineq, point) <= 0;
             }
         }
-
-        includes(point) {
-            return this.points.some(other => projEquals(other, point));
-        }
-
-        print() {
-            console.log(this.point1);
-            console.log(this.point2);
-        }
     }
 
+    /**
+     * A class representing a polygon equal to the cell of projective measured
+     * laminations carried by a fixed train track. The cell is assumed to lie
+     * inside of the triangle spanned by the vertices v1, v2, v3, represented
+     * projectively. Constructed with visual attributes to allow it to be drawn.
+     */
     class Cell {
-        constructor(vertLayer, cellLayer, v1, v2, v3, radius, thickness, sideColor, sideOpacity, fillColor, track, ...sides) {
+        /**
+         * vertLayer: a layer in an SVG drawing in which to draw vertices
+         * cellLayer: a layer in an SVG drawing in which to draw edges
+         * v1, v2, v3: three vertices represented projectively as [a,b,c],
+         * representing the vertices of a triangle containing the cell
+         * radius: a float representing the radius of the vertices
+         * sideColor: a color for the sides of the cell
+         * sideOpacity: the opacity for the sides of the cell
+         * track: the track with cell of projective measured laminations
+         * equal to this cell
+         * sides: a list of the sides of the cell, assumed represented in clockwise
+         * or counterclockwise order, such that the cell lies in each side's half-space
+         */
+        constructor(vertLayer, cellLayer, v1, v2, v3, radius, thickness,
+            sideColor, sideOpacity, fillColor, track, ...sides) {
             this.track = track;
             this.sides = sides;
+            this.vertLayer = vertLayer;
+            this.cellLayer = cellLayer;
+            this.v1 = v1;
+            this.v2 = v2;
+            this.v3 = v3;
+            this.radius = radius;
+            this.thickness = thickness;
+            this.sideColor = sideColor;
+            this.sideOpacity = sideOpacity;
+            this.fillColor = fillColor;
 
+            // An SVG polygon, created only when cell is drawn.
+            this.drawing = null;
+
+            // A list of the vertices of the cell.
             this.points = [];
 
+            // Add the vertices of the cell one at a time by going around the sides
+            // in sequence, checking whether points are projectively equal to
+            // avoid adding the same vertex twice.
             let i = 0;
             let point = sides[i].point1;
-
             for (let k=0; k<sides.length; k++) {
                 this.points.push(point);
                 for (let j=0; j<sides.length; j++) {
@@ -444,32 +637,37 @@
                 }
             }
 
-            this.drawing = null;
-            this.vertLayer = vertLayer;
-            this.cellLayer = cellLayer;
-            this.v1 = v1;
-            this.v2 = v2;
-            this.v3 = v3;
-            this.radius = radius;
-            this.thickness = thickness;
-            this.sideColor = sideColor;
-            this.sideOpacity = sideOpacity;
-            this.fillColor = fillColor;
+            // Divide each vector in this.points by its gcd.
+            this.points = this.points.map(vec => intDiv(vec, gcd3(...vec)));
         }
 
+        /**
+         * Check if the cell contains point (represented projectively as [a,b,c]).
+         * This is true exactly if each half-space for each side contains point.
+         */
         contains(point) {
             return this.sides.every(side => side.contains(point));
         }
 
+        /**
+         * Perform a left and right split along B on the track underlying
+         * the cell. Return the one or two cells resulting from the split.
+         * B: a large branch of this.track
+         */
         split(B) {
             let [leftTrack, newIneq] = this.track.leftSplit(B);
             let rightTrack = this.track.rightSplit(B)[0];
 
+            // An array storing the intersection points of the central split cell
+            // with the boundary of this cell.
             let intPoints = [];
 
+            // Compute intPoints.
             for (let side of this.sides) {
                 let intPoint = projIntersection(newIneq, side.ineq);
+                // Only add intPoint if it's contained in this cell.
                 if (this.contains(intPoint)) {
+                    // Take care not to add the same intersection point twice.
                     let contained = false;
                     for (let point of intPoints) {
                         if (projEquals(point, intPoint)) {
@@ -483,18 +681,23 @@
                 }
             }
 
+            // The new side created by splitting the cell.
             let [newPoint1, newPoint2] = intPoints;
             let leftSplitNewSide = new Side(newPoint1, newPoint2, newIneq, '>');
             let rightSplitNewSide = new Side(newPoint1, newPoint2, newIneq, '<');
 
+            // Sides for the cells obtained by left split and right split.
             let newLeftSides = [leftSplitNewSide];
             let newRightSides = [rightSplitNewSide];
+
+            // Whether the cell from left split or right split is 1-dimensional.
             let leftSideNull = false;
             let rightSideNull = false;
 
             for (let side of this.sides) {
                 let point1 = side.point1;
                 let point2 = side.point2;
+                // Check if side is equal to one of the newly constructed sides.
                 if ((projEquals(point1, newPoint1) && projEquals(point2, newPoint2)) ||
                     (projEquals(point1, newPoint2) && projEquals(point2, newPoint1))) {
                     for (let side of this.sides) {
@@ -509,17 +712,28 @@
                         }
                     }
                     break;
-                } else if (leftSplitNewSide.contains(point1) &&
+                }
+                // Check if side is a side of the cell from the left split.
+                else if (leftSplitNewSide.contains(point1) &&
                     leftSplitNewSide.contains(point2)) {
                     newLeftSides.push(side);
-                } else if (rightSplitNewSide.contains(point1) &&
+                }
+                // Check if side is a side of the cell from the right split.
+                else if (rightSplitNewSide.contains(point1) &&
                     rightSplitNewSide.contains(point2)) {
                     newRightSides.push(side);
-                } else {
+                }
+                // Otherwise break the side at an intersection point and
+                // add the two resulting sides to the left and right cells.
+                else {
                     if (leftSplitNewSide.contains(point1) &&
                         rightSplitNewSide.contains(point2)) {
+                        // testSide and testSign are used to check whether newPoint1
+                        // or newPoint2 lies on the edge defined by side.
                         let testSign = side.sign == '<' ? '>' : '<';
                         let testSide = new Side(point1, point2, side.ineq, testSign);
+
+                        // The case that the edge for side contains newPoint1.
                         if (testSide.contains(newPoint1)) {
                             if (!projEquals(point1, newPoint1)) {
                                 newLeftSides.push(new Side(point1, newPoint1,
@@ -529,7 +743,9 @@
                                 newRightSides.push(new Side(point2, newPoint1,
                                     side.ineq, side.sign));
                             }
-                        } else {
+                        }
+                        // The case that the edge for side contains newPoint2.
+                        else {
                             if (!projEquals(point1, newPoint2)) {
                                 newLeftSides.push(new Side(point1, newPoint2,
                                     side.ineq, side.sign));
@@ -540,8 +756,12 @@
                             }
                         }
                     } else {
+                        // testSide and testSign are used to check whether newPoint1
+                        // or newPoint2 lies on the edge defined by side.
                         let testSign = side.sign == '<' ? '>' : '<';
                         let testSide = new Side(point1, point2, side.ineq, testSign);
+
+                        // The case that the edge for side contains newPoint1.
                         if (testSide.contains(newPoint1)) {
                             if (!projEquals(point2, newPoint1)) {
                                 newLeftSides.push(new Side(point2, newPoint1,
@@ -551,7 +771,9 @@
                                 newRightSides.push(new Side(point1, newPoint1,
                                     side.ineq, side.sign));
                             }
-                        } else {
+                        }
+                        // The case that the edge for side contains newPoint2.
+                        else {
                             if (!projEquals(point2, newPoint2)) {
                                 newLeftSides.push(new Side(point2, newPoint2,
                                     side.ineq, side.sign));
@@ -566,26 +788,39 @@
             }
 
             let newOpacity = this.sideOpacity;
+            // Decay the radius of the new vertices and edge.
             let newRadius = this.radius / 1.1;
             let newThickness = this.thickness / 1.1;
 
+            // Construct the one or two new cells resulting from the split.
             if (leftSideNull) {
-                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
-                    this.sideColor, newOpacity, this.fillColor, rightTrack, ...this.sides)];
+                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2,
+                    this.v3, newRadius, newThickness, this.sideColor, newOpacity,
+                    this.fillColor, rightTrack, ...this.sides)];
             } else if (rightSideNull) {
-                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
-                    this.sideColor, newOpacity, this.fillColor, leftTrack, ...this.sides)];
+                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2,
+                    this.v3, newRadius, newThickness, this.sideColor, newOpacity,
+                    this.fillColor, leftTrack, ...this.sides)];
             } else {
-                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
-                        this.sideColor, newOpacity, this.fillColor, leftTrack, ...newLeftSides),
-                    new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2, this.v3, newRadius, newThickness,
-                        this.sideColor, newOpacity, this.fillColor, rightTrack, ...newRightSides)];
+                return [new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2,
+                    this.v3, newRadius, newThickness, this.sideColor, newOpacity,
+                    this.fillColor, leftTrack, ...newLeftSides),
+                    new Cell(this.vertLayer, this.cellLayer, this.v1, this.v2,
+                        this.v3, newRadius, newThickness, this.sideColor, newOpacity,
+                        this.fillColor, rightTrack, ...newRightSides)];
             }
         }
 
+        /**
+         * Split the track underlying the cell on all of its large branches
+         * simultaneously. Return all the resulting cells.
+         */
         shatter() {
             let names = this.track.getLargeBranches().map(branch => branch.name);
             let cells = [this];
+
+            // Split along the large branches one at a time. Update cells
+            // to contain the split cells at each step.
             for (let name of names) {
                 let newCells = [];
                 cells.forEach(cell => {
@@ -598,11 +833,18 @@
             return cells;
         }
 
+        /**
+         * Draw the cell in its vertLayer and edgeLayer.
+         */
         draw() {
-            let vertices = this.points.map(point => vectorToPoint(point, this.v1, this.v2, this.v3));
+            // Get the coordinates in the plane for the vertices of this cell.
+            let vertices = this.points.map(point =>
+                vectorToPoint(point, this.v1, this.v2, this.v3));
 
+            // Create SVG circles for each vertex.
             vertices.forEach(vertex => {
-                let circ = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                let circ = document.createElementNS("http://www.w3.org/2000/svg",
+                    "circle");
                 circ.setAttribute('cx', vertex[0]);
                 circ.setAttribute('cy', vertex[1]);
                 circ.setAttribute('fill', this.sideColor);
@@ -610,9 +852,11 @@
                 this.vertLayer.appendChild(circ);
             })
 
+            // Create SVG polygon polygon for the cell.
             let vertStrings = vertices.map(vert => `${vert[0]},${vert[1]}`);
             let vertString = vertStrings.join(' ');
-            let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            let polygon = document.createElementNS("http://www.w3.org/2000/svg",
+                "polygon");
             polygon.setAttribute('points', vertString);
             polygon.setAttribute('fill', this.fillColor);
             polygon.setAttribute('stroke', this.sideColor);
@@ -626,6 +870,10 @@
             polygon.addEventListener('mouseover', () => this.onMouseOver());
         }
 
+        /**
+         * Shatter the cell and draw each cell returned by shatter when
+         * the polygon for the cell is clicked.
+         */
         onClick() {
             let newCells = this.shatter();
             newCells.forEach(cell => cell.draw());
@@ -633,7 +881,12 @@
             this.drawing.removeEventListener('click', this.onClick);
         }
 
+        /**
+         * Display information about the when the mouse is over the polygon
+         * for the cell.
+         */
         onMouseOver() {
+            // The coordinates of the vertices for the polygon.
             let coordsString = '';
             this.points.forEach(vector => {
                 coordsString += `(${vector[0]},${vector[1]},${vector[2]})\n`;
@@ -642,6 +895,8 @@
             coordsNode.removeChild(coordsNode.lastChild);
             coordsNode.appendChild(document.createTextNode(coordsString));
 
+            // The names of the branches for the underlying track
+            // and the train paths they traverse on the original track.
             const branchesNode = document.getElementById('branches');
             branchesNode.removeChild(branchesNode.lastChild);
             let branchPars = document.createElement('p');
@@ -652,7 +907,8 @@
                 branchPars.appendChild(par);
             });
 
-
+            // The names of the switches of the underlying track
+            // and the branches they're adjacent to.
             const switchesNode = document.getElementById('switches');
             switchesNode.removeChild(switchesNode.lastChild);
             let switchPars = document.createElement('p');
@@ -667,6 +923,8 @@
                 switchPars.appendChild(par);
             });
 
+            // The transition matrix from the underlying track to the
+            // original track.
             let matrixTable = document.createElement('table');
             this.track.transMatrix.forEach(row => {
                 let rowElt = document.createElement('tr');
@@ -683,22 +941,11 @@
             matrixNode.appendChild(matrixTable);
         }
     }
-
-    function projectivize(vector) {
-        let sum = vector.reduce((sum, val) => sum + val);
-        return vector.map(entry => entry/sum);
-    }
-
-    function vectorToPoint(vector, ...vertices) {
-        let [v1,v2,v3] = vertices;
-        let [a,b,c] = projectivize(vector);
-
-        return newVec = add(add(scale(v1,a),scale(v2,b)),scale(v3,c));
-    }
 </script>
 
 
 <script>
+    // Properties of the SVG drawing.
     const unit = 100;
     const sideThickness = '1';
     var vertRadius = 5;
@@ -706,14 +953,15 @@
     const sideColor = 'black';
     const fillColor = 'white';
     var sideOpacity = 1;
-
+    const eps = vertRadius;
     const sideLength = 800;
-    const v2 = [sideLength, Math.sqrt(3)*sideLength/2];
-    const v3 = [0, Math.sqrt(3)*sideLength/2];
-    const v1 = [sideLength/2, 0];
+    const v2 = [sideLength-eps, Math.sqrt(3)*sideLength/2+eps];
+    const v3 = [0+eps, Math.sqrt(3)*sideLength/2+eps];
+    const v1 = [sideLength/2+eps, 0+eps];
 </script>
 
 <script>
+    // Set up the branches for the track.
     let A = new Branch('A', [1,0,0], {'A':1, 'B':0, 'C':0, 'D':0, 'E':0, 'F':0});
     let B = new Branch('B', [0,1,0], {'A':0, 'B':1, 'C':0, 'D':0, 'E':0, 'F':0});
     let C = new Branch('C', [0,0,1], {'A':0, 'B':0, 'C':1, 'D':0, 'E':0, 'F':0});
@@ -722,22 +970,26 @@
     let F = new Branch('F', [1,0,1], {'A':0, 'B':0, 'C':0, 'D':0, 'E':0, 'F':1});
     let branches = [A, B, C, D, E, F];
 
+    // Set up the switches for the track.
     let u = new Switch('u', [B, D], [E]);
     let v = new Switch('v', [E], [A, B]);
     let x = new Switch('x', [A, C], [F]);
     let y = new Switch('y', [F], [C, D]);
     let switches = [u, v, x, y];
 
+    // Create the track.
     let track = new Track(switches, branches);
 
+    // Create the sides of the cell for the track.
     let aSide = new Side([0,1,0], [0,0,1], [1,0,0], '>');
     let bSide = new Side([1,0,0], [0,0,1], [0,1,0], '>');
     let cSide = new Side([1,0,0], [0,1,0], [0,0,1], '>');
 
+    // Create the cell for the track.
     let vertLayer = document.getElementById('vertices');
     let cellLayer = document.getElementById('cells');
-    let cell = new Cell(vertLayer, cellLayer, v1, v2, v3, vertRadius, sideThickness, sideColor, sideOpacity, fillColor,
-        track, aSide, bSide, cSide);
+    let cell = new Cell(vertLayer, cellLayer, v1, v2, v3, vertRadius, sideThickness,
+        sideColor, sideOpacity, fillColor, track, aSide, bSide, cSide);
     cell.draw();
 </script>
 
