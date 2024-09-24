@@ -5,6 +5,21 @@
 <style>
 </style>
 
+<script>
+    MathJax = {
+        tex: {
+            inlineMath: [['$', '$']]
+        },
+        svg: {
+            fontCache: 'global'
+        }
+    };
+</script>
+<script type="text/javascript" id="MathJax-script"
+    async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+</script>
+
+
 <table>
     <tr>
         <td style='vertical-align: top;'>
@@ -20,7 +35,7 @@
         <td style='vertical-align: top;'>
             <p align=left>
                 <b>
-                    Projective coordinates:
+                    Vertices in projective coordinates:
                 </b>
             </p>
             <p id='coords'>
@@ -204,13 +219,17 @@
             if (trainPath) {
                 this.trainPath = trainPath;
 
-                // Create a string representing the train path
-                this.trainPathString = trainPath.map(branch => branch.name).join(' ');
+                // Create strings representing the branch and its train path
+                // on the earlier track.
+                let trainPathString = '$' + trainPath.map(branch => branch.name).join('') + '$';
+                this.displayString = '$' + this.name + '$: ' + trainPathString;
             } else {
                 this.trainPath = [this];
 
-                // Create a string representing the train path
-                this.trainPathString = this.name;
+                // Create strings representing the branch and its train path
+                // on the earlier track.
+                let trainPathString = '$' + this.name + '$';
+                this.displayString = '$' + this.name + '$: ' + trainPathString;
             }
             this.counts = counts;
         }
@@ -233,6 +252,16 @@
             this.name = name;
             this.inBranches = inBranches;
             this.outBranches = outBranches;
+
+            // A string for displaying the branches this switch is adjacent to
+            // on each side.
+            this.displayString = '$' + this.name + '$: Left: ';
+            this.inBranches.forEach(branch =>
+                { this.displayString += '$' + branch.name + '$ '; });
+            this.displayString += ' | Right: ';
+            this.outBranches.forEach(branch =>
+                { this.displayString += '$' + branch.name + '$ ';
+            });
         }
     }
 
@@ -249,20 +278,16 @@
             this.switches = switches;
             this.branches = branches;
 
-            // map and switchMap are dictionaries pointing from names
-            // of branches and switches to the branches and switches themselves
-            this.map = new Object();
+
+            // map and switchMap are dictionaries pointing from names.
+            // of branches and switches to the branches and switches themselves.
+            this.branchMap = new Object();
             this.switchMap = new Object();
-            branches.forEach(branch => { this.map[branch.name] = branch; });
+            branches.forEach(branch => { this.branchMap[branch.name] = branch; });
             switches.forEach(u => { this.switchMap[u.name] = u; });
 
-            // A dictionary storing the trainPathString for each branch
-            this.trainPathStrings = {};
-            this.branches.forEach(branch =>
-                { this.trainPathStrings[branch.name] = branch.trainPathString; });
-
-            this.names = Object.keys(this.map);
-            this.names.sort();
+            this.branchNames = Object.keys(this.branchMap);
+            this.branchNames.sort();
             this.switchNames = Object.keys(this.switchMap);
             this.switchNames.sort();
 
@@ -270,15 +295,29 @@
             // of this train track to the branches of an earlier train track
             // carrying it. The transition matrix can be obtained from
             // the counts of each branch.
-            let numNames = this.names.length;
+            let numNames = this.branchNames.length;
             this.transMatrix = [];
             for (let i=0; i<numNames; i++) {
                 this.transMatrix.push([]);
                 for (let j=0; j<numNames; j++) {
-                    let theBranch = this.map[this.names[j]];
-                    this.transMatrix[i].push(theBranch.counts[this.names[i]]);
+                    let theBranch = this.branchMap[this.branchNames[j]];
+                    this.transMatrix[i].push(theBranch.counts[this.branchNames[i]]);
                 }
             }
+
+            // A string rendering the transition matrix in LaTeX.
+            this.matString = '$\\begin{pmatrix}';
+            for (let i=0; i<numNames; i++) {
+                for (let j=0; j<numNames; j++) {
+                    this.matString += this.transMatrix[i][j];
+                    if (j < numNames - 1) {
+                        this.matString += '&';
+                    } else {
+                        this.matString += '\\\\';
+                    }
+                }
+            }
+            this.matString += '\\end{pmatrix}$';
         }
 
         /**
@@ -345,7 +384,7 @@
                 // for C and F using the old ones. This depends on whether C=F or not.
                 if (C == F) {
                     let newCounts = {};
-                    this.names.forEach(name => {
+                    this.branchNames.forEach(name => {
                         newCounts[name] = 2*B.counts[name] + C.counts[name];
                     });
                     C1 = new Branch(C.name, C.weight, newCounts,
@@ -353,11 +392,11 @@
                     F1 = C1;
                 } else {
                     let newCCounts = {};
-                    this.names.forEach(name => {
+                    this.branchNames.forEach(name => {
                         newCCounts[name] = B.counts[name] + C.counts[name];
                     });
                     let newFCounts = {};
-                    this.names.forEach(name => {
+                    this.branchNames.forEach(name => {
                         newFCounts[name] = B.counts[name] + F.counts[name];
                     });
                     C1 = new Branch(C.name, C.weight, newCCounts,
@@ -461,7 +500,7 @@
                 // for E and D using the old ones. This depends on whether E=D or not.
                 if (E == D) {
                     let newCounts = {};
-                    this.names.forEach(name => {
+                    this.branchNames.forEach(name => {
                         newCounts[name] = 2*B.counts[name] + E.counts[name];
                     });
                     D1 = new Branch(D.name, D.weight, newCounts,
@@ -469,11 +508,11 @@
                     E1 = D1;
                 } else {
                     let newDCounts = {};
-                    this.names.forEach(name => {
+                    this.branchNames.forEach(name => {
                         newDCounts[name] = B.counts[name] + D.counts[name];
                     });
                     let newECounts = {};
-                    this.names.forEach(name => {
+                    this.branchNames.forEach(name => {
                         newECounts[name] = B.counts[name] + E.counts[name];
                     });
                     D1 = new Branch(D.name, D.weight, newDCounts,
@@ -639,6 +678,15 @@
 
             // Divide each vector in this.points by its gcd.
             this.points = this.points.map(vec => intDiv(vec, gcd3(...vec)));
+
+            // A string for the displaying the vertices of this cell on the screen.
+            let coordsString = '$\\{';
+            this.points.forEach(vector => {
+                coordsString += `(${vector[0]},${vector[1]},${vector[2]})` + ',';
+            });
+            coordsString = coordsString.slice(0,-1);
+            coordsString += '\\}$';
+            this.coordsString = coordsString;
         }
 
         /**
@@ -825,7 +873,7 @@
                 let newCells = [];
                 cells.forEach(cell => {
                     newCells =
-                    newCells.concat(cell.split(cell.track.map[name])); }
+                    newCells.concat(cell.split(cell.track.branchMap[name])); }
                 );
                 cells = newCells;
             }
@@ -886,59 +934,47 @@
          * for the cell.
          */
         onMouseOver() {
-            // The coordinates of the vertices for the polygon.
-            let coordsString = '';
-            this.points.forEach(vector => {
-                coordsString += `(${vector[0]},${vector[1]},${vector[2]})\n`;
-            });
+            // Display the coordinates of the vertices for the polygon.
             const coordsNode = document.getElementById('coords');
-            coordsNode.removeChild(coordsNode.lastChild);
-            coordsNode.appendChild(document.createTextNode(coordsString));
+            coordsNode.textContent = '';
+            coordsNode.appendChild(document.createTextNode(this.coordsString));
 
-            // The names of the branches for the underlying track
+            // Display the names of the branches for the underlying track
             // and the train paths they traverse on the original track.
             const branchesNode = document.getElementById('branches');
-            branchesNode.removeChild(branchesNode.lastChild);
+            branchesNode.textContent = '';
             let branchPars = document.createElement('p');
             branchesNode.appendChild(branchPars);
-            this.track.names.forEach(name => {
+            this.track.branchNames.forEach(name => {
                 let par = document.createElement('p');
-                par.appendChild(document.createTextNode(name + ' : ' + this.track.trainPathStrings[name]));
+                par.appendChild(
+                    document.createTextNode(this.track.branchMap[name].displayString)
+                    );
                 branchPars.appendChild(par);
             });
 
-            // The names of the switches of the underlying track
+            // Display the names of the switches of the underlying track
             // and the branches they're adjacent to.
             const switchesNode = document.getElementById('switches');
-            switchesNode.removeChild(switchesNode.lastChild);
+            switchesNode.textContent = '';
             let switchPars = document.createElement('p');
             switchesNode.appendChild(switchPars);
             this.track.switchNames.forEach(name => {
                 let par = document.createElement('p');
-                let switchesString = name + ': Left: ';
-                this.track.switchMap[name].inBranches.forEach(branch => { switchesString += branch.name + ' '; });
-                switchesString += ' | Right: ';
-                this.track.switchMap[name].outBranches.forEach(branch => { switchesString += branch.name + ' '; });
-                par.appendChild(document.createTextNode(switchesString));
+                par.appendChild(
+                    document.createTextNode(this.track.switchMap[name].displayString)
+                    );
                 switchPars.appendChild(par);
             });
 
-            // The transition matrix from the underlying track to the
-            // original track.
-            let matrixTable = document.createElement('table');
-            this.track.transMatrix.forEach(row => {
-                let rowElt = document.createElement('tr');
-                row.forEach(entry => {
-                    let entryElt = document.createElement('td');
-                    entryElt.appendChild(document.createTextNode(entry));
-                    rowElt.appendChild(entryElt);
-                });
-                matrixTable.appendChild(rowElt);
-            });
-
+            // Display the transition matrix from the underlying track
+            // to the original track.
             const matrixNode = document.getElementById('transmat');
-            matrixNode.removeChild(matrixNode.lastChild);
-            matrixNode.appendChild(matrixTable);
+            matrixNode.textContent = '';
+            matrixNode.appendChild(document.createTextNode(this.track.matString));
+
+            // Render LaTeX with MathJax
+            MathJax.typeset();
         }
     }
 </script>
