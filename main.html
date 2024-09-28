@@ -35,6 +35,16 @@
         </td>
         <td style='vertical-align: top;'>
             <p align=left>
+                <p>
+                    <b id='instructions'>
+                        Instructions (click to show/hide):
+                    </b>
+
+                    <p id='theinstructions'>
+                    </p>
+                </p>
+            </p>
+            <p align=left>
                 <b>
                     Vertices in projective coordinates:
                 </b>
@@ -222,8 +232,13 @@
 
                 // Create strings representing the branch and its train path
                 // on the earlier track.
-                let trainPathString = '$' + trainPath.map(branch => branch.name).join('') + '$';
-                this.displayString = '$' + this.name + '$: ' + trainPathString;
+                let trainPathString = trainPath.map(branch => branch.name).join('');
+                this.displayString = '$' + this.name + '$: ' + '$' + trainPathString + '$';
+                if (trainPathString.length < 20) {
+                    this.displayStringShort = this.displayString;
+                } else {
+                    this.displayStringShort = '$' + this.name + '$: ' + '$' + trainPathString.slice(0,20) + ' \\ldots ' + trainPathString.slice(-10) + '$';
+                }
             } else {
                 this.trainPath = [this];
 
@@ -231,6 +246,7 @@
                 // on the earlier track.
                 let trainPathString = '$' + this.name + '$';
                 this.displayString = '$' + this.name + '$: ' + trainPathString;
+                this.displayStringShort = this.displayString;
             }
             this.counts = counts;
         }
@@ -949,7 +965,7 @@
             this.track.branchNames.forEach(name => {
                 let par = document.createElement('p');
                 par.appendChild(
-                    document.createTextNode(this.track.branchMap[name].displayString)
+                    document.createTextNode(this.track.branchMap[name].displayStringShort)
                     );
                 branchPars.appendChild(par);
             });
@@ -975,6 +991,42 @@
             matrixNode.appendChild(document.createTextNode(this.track.matString));
 
             // Render LaTeX with MathJax
+            MathJax.typeset();
+        }
+    }
+
+    function toggleInstructions() {
+        let node = document.getElementById('theinstructions');
+        if (node.hasChildNodes()) {
+            node.textContent = '';
+        } else {
+            theInstructions = "\n \
+            The triangle on the left is the cell of projective \
+            measured laminations for the train track $\\tau$ shown above. Clicking the \
+            cell causes the track to split along all its large branches \
+            via both a left split and a right split. This causes the cell to split as \
+            well. Each new cell has an underlying train track and these new cells \
+            and new train tracks can be split as well by clicking. Mousing over a cell $C$ \
+            with underlying track $\\sigma$ gives the coordinates for the vertices of $C$ \
+            in projective coordinates and information about the underlying track $\\sigma$: \
+            the branches of $\\sigma$ and the trainpaths they traverse on the original \
+            track $\\tau$, the switches of $\\sigma$ and the branches they are adjacent \
+            to, and the transition matrix from $\\sigma$ to $\\tau$. See the readme \
+            on Github for more information."
+            newNode = document.createElement('p');
+            centered = document.createElement('center');
+            img = document.createElement('img');
+            img.src = 'train_track.png';
+            img.width = '500';
+            img.height = '250';
+            br = document.createElement('br');
+            text = document.createTextNode(theInstructions);
+            node.appendChild(newNode);
+            centered.appendChild(img);
+            newNode.appendChild(centered);
+            newNode.appendChild(br);
+            newNode.appendChild(text);
+
             MathJax.typeset();
         }
     }
@@ -1028,6 +1080,8 @@
     let cell = new Cell(vertLayer, cellLayer, v1, v2, v3, vertRadius, sideThickness,
         sideColor, sideOpacity, fillColor, track, aSide, bSide, cSide);
     cell.draw();
+
+    document.getElementById('instructions').addEventListener('click', toggleInstructions);
 </script>
 
 
